@@ -10,3 +10,6 @@ dsh --profile web --dump-config | grep -F '@stepup/dsh-avo'
 ```
 
 Tools: `avo.vary`, `avo.lineage`, `avo.evaluate`, `avo.knowledge`.
+
+## Local ingest
+See INGEST.md. Example: node lib/ingest-cli.js /path/to/clip.mp4 --out /tmp/avo-genome --scene-thresh 0.08 --no-asr

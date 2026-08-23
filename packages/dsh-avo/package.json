@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "type": "module",
   "main": "lib/index.js",
+  "bin": {
+    "avo-ingest": "./lib/ingest-cli.js"
+  },
   "files": ["lib", "cordis.patch.yml"],
   "dsh": {
     "bundle": {
@@ -11,7 +14,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "prepare": "tsc -p tsconfig.json"
+    "prepare": "tsc -p tsconfig.json",
+    "ingest": "node lib/ingest-cli.js"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-tools": "*",
