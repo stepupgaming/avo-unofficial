@@ -209,11 +209,21 @@ function proxyKey(edl, tag, w0, w1) {
   return createHash('sha1').update(JSON.stringify(payload)).digest('hex').slice(0, 16)
 }
 
+
+function meanVolume(path) {
+  const r = spawnSync('ffmpeg', ['-hide_banner', '-i', path, '-af', 'volumedetect', '-f', 'null', '-'], {
+    encoding: 'utf8',
+    timeout: 30000,
+  })
+  const m = String(r.stderr || '').match(/mean_volume:\s*([-\d.]+)/)
+  return m ? Number(m[1]) : null
+}
 export function measurePath(path) {
   const meta = ffprobe(path)
   const cuts = sceneCuts(path, 0.08)
   const firstCut = cuts.length ? cuts[0] : meta.duration
-  return { ...meta, cuts, firstCut, nCuts: cuts.length }
+  const mean_volume = meta.has_audio ? meanVolume(path) : null
+  return { ...meta, cuts, firstCut, nCuts: cuts.length, mean_volume }
 }
 
 function measureWindow(edl, w0, w1, tag) {
@@ -259,6 +269,16 @@ export function measureEdl(edl) {
   }
 }
 
+function audioFromProxy(measured, fallback) {
+  if (!measured.has_audio) return 0
+  const db = measured.hook?.mean_volume ?? measured.mean_volume
+  if (db == null || Number.isNaN(db)) return Math.max(fallback, 0.45)
+  if (db > -20) return Math.max(fallback, 0.7)
+  if (db > -35) return Math.max(fallback, 0.55)
+  if (db > -50) return 0.3
+  return 0.1
+}
+
 export function blendMeasured(dummy, measured, edl) {
   if (!measured || measured.error) {
     return { ...dummy, measured: measured || null, f_mode: 'dummy_only', not_vlm: true }
@@ -280,7 +300,7 @@ export function blendMeasured(dummy, measured, edl) {
   const lateCuts = measured.late?.nCuts ?? 0
   const hookDur = measured.hook?.duration || measured.duration || 1
   const cps = hookCuts / hookDur
-  let visual = Math.min(1, hookCuts * 0.12 + lateCuts * 0.08)
+  let visual = Math.min(1, hookCuts * 0.12 + (measured.source_looped ? 0 : lateCuts * 0.08))
   if (firstCut > 2.2) visual = Math.max(0, visual - 0.15)
   let pacing = dummy.vector.pacing
   if (cps > 1.2) pacing = Math.min(pacing, 0.45)
@@ -291,7 +311,7 @@ export function blendMeasured(dummy, measured, edl) {
     attention_support: attention,
     visual_novelty: visual,
     pacing,
-    audiovisual_sync: measured.has_audio ? Math.max(dummy.vector.audiovisual_sync, 0.5) : 0,
+    audiovisual_sync: audioFromProxy(measured, dummy.vector.audiovisual_sync),
   }
   const pos = ['narrative_clarity', 'semantic_alignment', 'visual_novelty', 'pacing', 'attention_support', 'audiovisual_sync', 'youtube_prior']
   vector.holistic_vlm_quality = 0.9 * pos.reduce((s, k) => s + vector[k], 0) / pos.length
@@ -312,6 +332,7 @@ export function blendMeasured(dummy, measured, edl) {
       hookCuts,
       lateCuts,
       lateWindow: measured.late?.window || null,
+      mean_volume: measured.hook?.mean_volume ?? measured.mean_volume,
       path: measured.path,
     },
     f_mode: 'proxy-windows',
