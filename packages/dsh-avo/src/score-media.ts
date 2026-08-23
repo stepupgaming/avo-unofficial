@@ -100,9 +100,10 @@ function segments(edl, w0, w1) {
     const clip = clipAt(clips, (a + b) / 2)
     if (!clip) continue
     const srcIn = Number(clip.src_in || 0)
-    const src0 = srcIn + (a - Number(clip.t0 || 0))
-    const src1 = src0 + (b - a)
-    out.push({ t0: a, t1: b, src0, src1, clip })
+    const speed = Math.max(0.5, Math.min(2, Number(clip.speed || 1)))
+    const src0 = srcIn + (a - Number(clip.t0 || 0)) * speed
+    const src1 = src0 + (b - a) * speed
+    out.push({ t0: a, t1: b, src0, src1, speed, clip })
   }
   return out
 }
@@ -138,7 +139,8 @@ export function renderWindow(edl, w0, w1, outPath) {
   segs.forEach((s, i) => {
     const lab = `s${i}`
     const inn = idxOf(s.clip.src)
-    filters.push(`[${inn}:v]trim=${s.src0}:${s.src1},setpts=PTS-STARTPTS,${scaleChain(s.clip.crop)}[${lab}]`)
+    const spd = s.speed && s.speed !== 1 ? `,setpts=PTS/${s.speed}` : ''
+    filters.push(`[${inn}:v]trim=${s.src0}:${s.src1},setpts=PTS-STARTPTS${spd},${scaleChain(s.clip.crop)}[${lab}]`)
     labels.push(`[${lab}]`)
   })
   let last = labels.length === 1 ? labels[0].slice(1, -1) : 'base'
@@ -176,7 +178,9 @@ export function renderWindow(edl, w0, w1, outPath) {
   const voPath = vo ? resolveSrc(vo.src) : null
   if (voPath) {
     const duck = vo.duck ? ',volume=0.35' : ''
-    filters.push(`[${idxOf(vo.src)}:a]atrim=${w0}:${w1}${duck},asetpts=PTS-STARTPTS[aud]`)
+    const vspeed = Math.max(0.5, Math.min(2, Number((edl.tracks?.video || [])[0]?.speed || 1)))
+    const tempo = vspeed !== 1 ? `,atempo=${vspeed}` : ''
+    filters.push(`[${idxOf(vo.src)}:a]atrim=${w0}:${w1}${duck}${tempo},asetpts=PTS-STARTPTS[aud]`)
     map.push('-map', '[aud]')
   }
 
@@ -201,7 +205,7 @@ export function renderWindow(edl, w0, w1, outPath) {
 function proxyKey(edl, tag, w0, w1) {
   const payload = {
     tag, w0, w1, v2: 3,
-    v: (edl.tracks?.video || []).slice(0, 4).map((c) => [c.src, c.t0, c.t1, c.crop, c.src_in]),
+    v: (edl.tracks?.video || []).slice(0, 4).map((c) => [c.src, c.t0, c.t1, c.crop, c.src_in, c.speed]),
     b: (edl.tracks?.broll || []).slice(0, 3).map((c) => [c.src, c.t0, c.t1]),
     c: (edl.tracks?.captions || []).slice(0, 4).map((c) => [c.text, c.t0, c.t1]),
     g: (edl.tracks?.graphics || []).slice(0, 4).map((c) => [c.kind, c.t0, c.t1]),

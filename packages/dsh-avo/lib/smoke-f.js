@@ -9,8 +9,10 @@ const brolled = applyMutation(punched, 'broll_swap');
 const c = evaluate(brolled, k);
 const ducked = applyMutation(seed, 'music_duck');
 const d = evaluate(ducked, k);
-const out = [a, b, c, d].map((s, i) => ({
-    name: ['seed', 'punch_in', 'punch+broll', 'music_duck'][i],
+const sped = applyMutation(seed, 'speed');
+const e = evaluate(sped, k);
+const out = [a, b, c, d, e].map((s, i) => ({
+    name: ['seed', 'punch_in', 'punch+broll', 'music_duck', 'speed'][i],
     f_mode: s.f_mode,
     correctness: s.correctness,
     reasons: s.correctness_reasons,
@@ -20,7 +22,9 @@ const out = [a, b, c, d].map((s, i) => ({
 console.log(JSON.stringify(out, null, 2));
 if (out.some((x) => x.f_mode !== 'proxy-windows' || !x.correctness))
     process.exit(2);
-if (!(d.measured.mean_volume < a.measured.mean_volume)) {
-    console.error('duck did not lower mean_volume');
+if (!(d.measured.mean_volume < a.measured.mean_volume))
     process.exit(3);
+if (!(e.measured.firstCut < a.measured.firstCut - 0.05)) {
+    console.error('speed did not pull firstCut earlier');
+    process.exit(4);
 }
