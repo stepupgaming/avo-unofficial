@@ -1,49 +1,6 @@
 // @ts-nocheck
 import { applyMutation, evaluate, loadJson, loadKnowledge, Lineage, CHEAP } from './loop.js';
-import { diagnoseScore } from './inspect.js';
-function weakestKeys(vector, n = 2) {
-    return Object.entries(vector || {})
-        .filter(([k]) => !['repetition', 'overediting', 'distraction'].includes(k))
-        .sort((a, b) => a[1] - b[1])
-        .slice(0, n)
-        .map(([k]) => k);
-}
-function pickOp(memory) {
-    const tried = new Set(memory.tried);
-    const committed = new Set((memory.lineageSummary.committedNotes || []).filter((x) => x !== 'seed'));
-    const cheap = memory.cheap;
-    const weak = memory.weakKeys || [];
-    const map = {
-        attention_support: ['punch_in', 'graphic', 'caption'],
-        semantic_alignment: ['caption_claim', 'broll_swap'],
-        pacing: ['trim', 'punch_in'],
-        youtube_prior: ['caption', 'graphic'],
-        audiovisual_sync: ['music_duck', 'sfx'],
-        visual_novelty: ['punch_in', 'broll_swap', 'graphic'],
-        narrative_clarity: ['caption', 'trim'],
-    };
-    const diags = memory.diags || [];
-    if (diags.includes('hook_needs_visual') && !tried.has('punch_in') && !committed.has('punch_in')) {
-        return { op: 'punch_in', reason: 'measured:firstCut' };
-    }
-    if (diags.includes('flat_pacing') && !tried.has('broll_swap') && !committed.has('broll_swap')) {
-        return { op: 'broll_swap', reason: 'measured:hookCuts' };
-    }
-    const kHints = (memory.kHints || []).filter((op) => !tried.has(op) && !committed.has(op) && op !== 'h3_regen' && !(op === 'music_duck' && diags.includes('quiet_audio')));
-    if (kHints.length)
-        return { op: kHints[0], reason: 'k_prior' };
-    for (const key of weak) {
-        for (const op of map[key] || []) {
-            if (!tried.has(op) && !committed.has(op) && op !== 'h3_regen')
-                return { op, reason: 'weak:' + key };
-        }
-    }
-    for (const op of cheap) {
-        if (!tried.has(op) && !committed.has(op) && op !== 'h3_regen')
-            return { op, reason: 'untried_cheap' };
-    }
-    return { op: 'trim', reason: 'fallback' };
-}
+import { inspectEdl, proposeFromInspect } from './inspect.js';
 export class Agent {
     constructor({ lineage, k, seed }) {
         this.lineage = lineage;
@@ -53,6 +10,7 @@ export class Agent {
         this.memory = {
             inspectedLineage: false,
             inspectedK: false,
+            inspectedEdl: false,
             diagnosed: false,
             tried: [],
             transcript: [],
@@ -92,22 +50,21 @@ export class Agent {
         this.log('inspect_k', { hints: hints.slice(0, 8), hook_by: this.k.hook_visual_by_s });
         return this.memory.kHints;
     }
-    diagnose(score) {
-        const weak = weakestKeys(score.vector);
-        this.memory.weakKeys = weak;
-        this.memory.diags = diagnoseScore(score);
+    inspectTimeline() {
+        const viewed = inspectEdl(this.memory.parent, this.memory.parentScore);
+        this.memory.edlView = viewed;
+        this.memory.inspectedEdl = true;
         this.memory.diagnosed = true;
-        this.memory.lastScore = score;
-        this.log('diagnose', { weak, scalar: score.scalar, correctness: score.correctness });
-        return weak;
+        this.log('inspect_edl', viewed);
+        return viewed;
     }
     decide() {
         if (!this.memory.inspectedLineage)
             return { tool: 'inspect_lineage' };
         if (!this.memory.inspectedK)
             return { tool: 'inspect_k' };
-        if (!this.memory.diagnosed)
-            return { tool: 'diagnose' };
+        if (!this.memory.inspectedEdl)
+            return { tool: 'inspect_edl' };
         if (!this.memory.candidate)
             return { tool: 'mutate' };
         if (!this.memory.candidateScore)
@@ -117,7 +74,7 @@ export class Agent {
         }
         return { tool: 'discard' };
     }
-    run(inner = 8) {
+    run(inner = 10) {
         let parent = this.lineage.best()?.path ? loadJson(this.lineage.best().path) : JSON.parse(JSON.stringify(this.seed));
         let parentScore = evaluate(parent, this.k);
         if (!this.lineage.index.committed.length)
@@ -136,12 +93,19 @@ export class Agent {
                 this.inspectK();
                 continue;
             }
-            if (step.tool === 'diagnose') {
-                this.diagnose(this.memory.parentScore);
+            if (step.tool === 'inspect_edl') {
+                this.inspectTimeline();
                 continue;
             }
             if (step.tool === 'mutate') {
-                const pick = pickOp(this.memory);
+                const pick = proposeFromInspect({
+                    edl: this.memory.parent,
+                    score: this.memory.parentScore,
+                    tried: this.memory.tried,
+                    force: null,
+                    cheap: this.cheap,
+                    lineage: this.lineage,
+                });
                 this.memory.tried.push(pick.op);
                 try {
                     this.memory.candidate = applyMutation(this.memory.parent, pick.op);
@@ -159,7 +123,7 @@ export class Agent {
             if (step.tool === 'evaluate') {
                 const score = evaluate(this.memory.candidate, this.k);
                 this.memory.candidateScore = score;
-                this.log('evaluate', { scalar: score.scalar, correctness: score.correctness });
+                this.log('evaluate', { scalar: score.scalar, correctness: score.correctness, firstCut: score.measured?.firstCut });
                 continue;
             }
             if (step.tool === 'commit') {
@@ -170,7 +134,7 @@ export class Agent {
                     op: this.memory.pick.op,
                     score: this.memory.candidateScore,
                     id: rec.id,
-                    why: this.memory.pick.reason,
+                    why: this.memory.pick.why,
                     transcript: this.memory.transcript,
                     tried: this.memory.tried,
                 };
@@ -179,11 +143,11 @@ export class Agent {
             if (step.tool === 'discard') {
                 const score = this.memory.candidateScore;
                 this.lineage.record(this.memory.pick.op, score, 'discard', 'no_improve_or_correctness');
-                last = { status: 'discard', op: this.memory.pick.op, score, why: this.memory.pick.reason };
+                last = { status: 'discard', op: this.memory.pick.op, score, why: this.memory.pick.why };
                 this.memory.candidate = null;
                 this.memory.candidateScore = null;
-                this.memory.diagnosed = false;
-                this.diagnose(score);
+                this.memory.parentScore = score;
+                this.memory.inspectedEdl = false;
                 continue;
             }
         }

@@ -320,7 +320,7 @@ export function varyOnce(seed, lineage, k, inner = 5) {
             force = redirect;
             redirects += 1;
         }
-        const pick = inspectAndPropose({ diags, tried, force, cheap, lineage, k });
+        const pick = inspectAndPropose({ diags, tried, force, cheap, lineage, k, edl: parent, score: parentScore });
         const op = pick.op;
         tried.push(op);
         let cand;

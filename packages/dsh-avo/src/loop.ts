@@ -288,7 +288,7 @@ export function varyOnce(seed, lineage, k, inner = 5) {
     const diags = diagnostics(parentScore)
     const redirect = supervisorInspect(lineage, cheap)
     if (redirect) { force = redirect; redirects += 1 }
-    const pick = inspectAndPropose({ diags, tried, force, cheap, lineage, k }); const op = pick.op
+    const pick = inspectAndPropose({ diags, tried, force, cheap, lineage, k, edl: parent, score: parentScore }); const op = pick.op
     tried.push(op)
     let cand
     try { cand = applyMutation(parent, op) } catch (e) {

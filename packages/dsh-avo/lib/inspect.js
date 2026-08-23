@@ -1,4 +1,40 @@
 // @ts-nocheck
+export function inspectEdl(edl, score) {
+    const t = edl?.tracks || {};
+    const captions = t.captions || [];
+    const broll = t.broll || [];
+    const video = t.video || [];
+    const setupT = Number((edl?.beats || []).find((b) => b.name === 'setup')?.t_start ?? 3);
+    const m = score?.measured || {};
+    const facts = {
+        n_captions: captions.length,
+        n_broll: broll.length,
+        n_video: video.length,
+        n_graphics: (t.graphics || []).length,
+        caption_in_hook: captions.some((c) => Number(c.t0 || 0) <= 1),
+        broll_near_setup: broll.some((c) => Math.abs(Number(c.t0 || 0) - setupT) < 2),
+        firstCut: m.firstCut ?? null,
+        hookCuts: m.hookCuts ?? null,
+        mean_volume: m.mean_volume ?? null,
+        source_looped: !!m.source_looped,
+        edl_duration: m.edl_duration ?? null,
+    };
+    const gaps = [];
+    if (facts.firstCut != null && facts.firstCut > 1.0)
+        gaps.push({ gap: 'late_first_cut', op: 'punch_in' });
+    if (facts.hookCuts != null && facts.hookCuts <= 1)
+        gaps.push({ gap: 'few_hook_cuts', op: 'broll_swap' });
+    if (!facts.broll_near_setup)
+        gaps.push({ gap: 'no_broll_near_setup', op: 'broll_swap' });
+    if (!facts.caption_in_hook)
+        gaps.push({ gap: 'no_caption_in_hook', op: 'caption' });
+    if (facts.n_graphics === 0 && !facts.caption_in_hook)
+        gaps.push({ gap: 'empty_hook_packaging', op: 'graphic' });
+    if (facts.edl_duration != null && facts.edl_duration > 40 && facts.n_video === 1 && facts.n_broll === 0) {
+        gaps.push({ gap: 'long_single_shot', op: 'trim' });
+    }
+    return { facts, gaps };
+}
 export function diagnoseScore(score) {
     const d = [];
     const v = score?.vector || {};
@@ -20,49 +56,27 @@ export function diagnoseScore(score) {
 export function lastCommittedOps(lineage) {
     return (lineage.index.committed || []).map((c) => c.note).filter(Boolean);
 }
-export function priorsFor(diags, k) {
-    const rows = k?.priors?.hypothesized?.P_action_given_state || [];
-    const out = [];
-    for (const row of rows) {
-        const st = String(row.state || '');
-        const hit = (diags.includes('hook_needs_visual') && st.includes('hook')) ||
-            (diags.includes('claim_unpaired') && st.includes('claim'));
-        if (!hit || !row.P)
-            continue;
-        const ranked = Object.entries(row.P).sort((a, b) => b[1] - a[1]);
-        for (const [op] of ranked)
-            out.push(op === 'hard_cut' ? 'trim' : op);
-    }
-    return out;
-}
-export function inspectAndPropose({ diags, tried, force, cheap, lineage, k }) {
+export function proposeFromInspect({ edl, score, tried, force, cheap, lineage }) {
     if (force && !tried.includes(force))
         return { op: force, why: 'supervisor_redirect' };
     const used = new Set(lastCommittedOps(lineage));
-    const prefer = [...priorsFor(diags, k)];
-    if (diags.includes('hook_needs_visual'))
-        prefer.push('punch_in', 'graphic', 'caption');
-    if (diags.includes('claim_unpaired'))
-        prefer.push('caption_claim', 'broll_swap');
-    if (diags.includes('flat_pacing'))
-        prefer.push('trim', 'punch_in');
-    if (diags.includes('weak_packaging') || diags.includes('no_captions'))
-        prefer.push('caption', 'graphic');
-    if (!diags.includes('quiet_audio'))
-        prefer.push('music_duck');
-    prefer.push('sfx', 'speed');
-    for (const op of [...prefer, ...cheap]) {
-        if (tried.includes(op) || op === 'h3_regen')
-            continue;
-        if (used.has(op) && diags.length)
-            continue;
-        return { op, why: 'inspect:' + diags.join(',') };
+    const { facts, gaps } = inspectEdl(edl, score);
+    if (facts.mean_volume != null && facts.mean_volume < -40) {
+        used.add('music_duck');
     }
-    for (const op of cheap) {
-        if (!tried.includes(op) && op !== 'h3_regen')
-            return { op, why: 'cheap_fallback' };
+    for (const g of gaps) {
+        if (tried.includes(g.op) || used.has(g.op) || g.op === 'h3_regen')
+            continue;
+        return { op: g.op, why: 'edl:' + g.gap, facts };
     }
-    return { op: 'trim', why: 'last_resort' };
+    for (const op of cheap || []) {
+        if (!tried.includes(op) && !used.has(op) && op !== 'h3_regen')
+            return { op, why: 'untried_cheap', facts };
+    }
+    return { op: 'trim', why: 'last_resort', facts };
+}
+export function inspectAndPropose({ diags, tried, force, cheap, lineage, k, edl, score }) {
+    return proposeFromInspect({ edl, score, tried, force, cheap, lineage });
 }
 export function supervisorInspect(lineage, cheap) {
     const recent = lineage.index.trajectory.slice(-8);
