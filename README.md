@@ -1,6 +1,8 @@
 # avo-unofficial
 
 Unofficial reimplementation of NVIDIA AVO (Agentic Variation Operators, [arXiv:2603.24517](https://arxiv.org/abs/2603.24517)) for evolutionary / agentic search.
+To run on your own files, see [OPERATOR.md](OPERATOR.md).
+
 
 Not affiliated with NVIDIA. Independent reading of the paper's operator, bound to a new environment.
 

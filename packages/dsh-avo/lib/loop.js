@@ -13,6 +13,11 @@ const H3_REFUSED = 'h3_regen refused in v0 (expensive last; stub only)';
 function clone(x) { return JSON.parse(JSON.stringify(x)); }
 function clip(x, lo = 0, hi = 1) { return Math.max(lo, Math.min(hi, x)); }
 export function loadJson(path) { return JSON.parse(readFileSync(path, 'utf8')); }
+function readJsonl(path) {
+    if (!existsSync(path))
+        return [];
+    return readFileSync(path, 'utf8').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l));
+}
 export function saveJson(path, obj) {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, JSON.stringify(obj, null, 2) + '\n');
@@ -61,7 +66,8 @@ function eventCount(edl) {
         video_clips: (t.video || []).length,
     };
 }
-export function loadKnowledge(genomeDir = '/workspace/editing-genome') {
+export function loadKnowledge(genomeDir) {
+    genomeDir = genomeDir || process.env.AVO_GENOME || '/workspace/editing-genome';
     const k = {
         source: genomeDir,
         cheap_first: CHEAP,
@@ -69,6 +75,7 @@ export function loadKnowledge(genomeDir = '/workspace/editing-genome') {
         hook_visual_by_s: 1.0,
         overedit_bands: { captions: 6, sfx: 4, punch_ins: 3 },
         broll_reject_if_gt: 4.0,
+        operator: null,
     };
     const priors = join(genomeDir, 'genome', 'v0_priors.json');
     if (existsSync(priors)) {
@@ -79,6 +86,24 @@ export function loadKnowledge(genomeDir = '/workspace/editing-genome') {
         const broll = k.priors.hypothesized?.broll_duration_s;
         if (broll?.reject_if_gt != null)
             k.broll_reject_if_gt = Number(broll.reject_if_gt);
+    }
+    const videos = readJsonl(join(genomeDir, 'videos.jsonl'));
+    const events = readJsonl(join(genomeDir, 'events.jsonl'));
+    const beats = readJsonl(join(genomeDir, 'beats.jsonl'));
+    if (videos.length || events.length) {
+        const early = events.filter((e) => Number(e.t || 0) <= 1.2);
+        const earlyCuts = early.filter((e) => ['hard_cut', 'punch_in'].includes(e.editor_action?.action)).length;
+        k.operator = {
+            videos: videos.length,
+            events: events.length,
+            beats: beats.length,
+            early_cut_events: earlyCuts,
+        };
+        if (earlyCuts > 0)
+            k.hook_visual_by_s = Math.min(k.hook_visual_by_s, 1.0);
+        k.events = events;
+        k.videos = videos;
+        k.beats = beats;
     }
     return k;
 }

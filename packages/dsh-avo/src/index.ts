@@ -9,7 +9,7 @@ export const name = 'avo'
 export const inject = ['tools']
 
 const ROOT = '/workspace/avo-unofficial'
-const GENOME = '/workspace/editing-genome'
+const GENOME = process.env.AVO_GENOME || '/workspace/editing-genome'
 
 export const Config = Schema.object({
   root: Schema.string().default(ROOT),
