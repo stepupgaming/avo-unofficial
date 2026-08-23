@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.venv/
+lineage/*.json
+lineage/commits/
+.pytest_cache/
