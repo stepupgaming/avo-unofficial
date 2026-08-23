@@ -1,4 +1,17 @@
 // @ts-nocheck
+export function diagnoseScore(score) {
+  const d = []
+  const v = score?.vector || {}
+  const m = score?.measured || {}
+  if ((m.firstCut ?? 99) > 1.0 || (v.attention_support ?? 1) < 0.7) d.push('hook_needs_visual')
+  if ((v.semantic_alignment ?? 1) < 0.5) d.push('claim_unpaired')
+  if ((m.hookCuts ?? 99) <= 1 || (v.pacing ?? 1) < 0.6) d.push('flat_pacing')
+  if ((v.youtube_prior ?? 1) < 0.6) d.push('weak_packaging')
+  if ((score?.counts?.captions ?? 0) === 0) d.push('no_captions')
+  if ((m.mean_volume ?? -10) < -40) d.push('quiet_audio')
+  return d
+}
+
 export function lastCommittedOps(lineage) {
   return (lineage.index.committed || []).map((c) => c.note).filter(Boolean)
 }
@@ -26,7 +39,8 @@ export function inspectAndPropose({ diags, tried, force, cheap, lineage, k }) {
   if (diags.includes('claim_unpaired')) prefer.push('caption_claim', 'broll_swap')
   if (diags.includes('flat_pacing')) prefer.push('trim', 'punch_in')
   if (diags.includes('weak_packaging') || diags.includes('no_captions')) prefer.push('caption', 'graphic')
-  prefer.push('music_duck', 'sfx', 'speed')
+  if (!diags.includes('quiet_audio')) prefer.push('music_duck')
+  prefer.push('sfx', 'speed')
   for (const op of [...prefer, ...cheap]) {
     if (tried.includes(op) || op === 'h3_regen') continue
     if (used.has(op) && diags.length) continue

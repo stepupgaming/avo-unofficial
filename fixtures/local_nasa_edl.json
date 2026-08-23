@@ -1,0 +1,42 @@
+{
+  "id": "local-nasa-alan",
+  "aspect": "9:16",
+  "target_duration_s": 48,
+  "format": "short",
+  "content_mode": "talking_head",
+  "purpose": "educate",
+  "edit_character": "aggressive_retention",
+  "rights": "fixture",
+  "tracks": {
+    "video": [
+      {
+        "id": "v1",
+        "src": "/workspace/editing-genome/samples/nasa-svs-2026/nasa_alan_2026.mp4",
+        "t0": 0.0,
+        "t1": 48.0,
+        "crop": 1.0,
+        "speed": 1.0
+      }
+    ],
+    "audio": [
+      {
+        "id": "a1",
+        "src": "/workspace/editing-genome/samples/nasa-svs-2026/nasa_alan_2026.mp4",
+        "t0": 0.0,
+        "t1": 48.0
+      }
+    ],
+    "captions": [],
+    "graphics": [],
+    "sfx": [],
+    "broll": []
+  },
+  "beats": [
+    {"name": "hook", "t_start": 0.0, "t_end": 3.0},
+    {"name": "setup", "t_start": 3.0, "t_end": 12.0},
+    {"name": "development", "t_start": 12.0, "t_end": 28.0},
+    {"name": "escalation", "t_start": 28.0, "t_end": 38.0},
+    {"name": "payoff", "t_start": 38.0, "t_end": 44.0},
+    {"name": "close", "t_start": 44.0, "t_end": 48.0}
+  ]
+}

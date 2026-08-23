@@ -7,7 +7,7 @@ const POS = [
   'attention_support', 'audiovisual_sync', 'youtube_prior', 'holistic_vlm_quality',
 ]
 const PEN = ['repetition', 'overediting', 'distraction']
-import { inspectAndPropose, supervisorInspect } from "./inspect.js"
+import { inspectAndPropose, supervisorInspect, diagnoseScore } from "./inspect.js"
 import { blendMeasured, measureEdl } from "./score-media.js"
 const CHEAP = ['trim', 'reorder', 'punch_in', 'speed', 'caption', 'graphic', 'broll_swap', 'sfx', 'music_duck']
 const H3_REFUSED = 'h3_regen refused in v0 (expensive last; stub only)'
@@ -238,14 +238,7 @@ export class Lineage {
 }
 
 function diagnostics(score) {
-  const d = []
-  const v = score.vector || {}
-  if ((v.attention_support ?? 1) < 0.7) d.push('hook_needs_visual')
-  if ((v.semantic_alignment ?? 1) < 0.5) d.push('claim_unpaired')
-  if ((v.pacing ?? 1) < 0.6) d.push('flat_pacing')
-  if ((v.youtube_prior ?? 1) < 0.6) d.push('weak_packaging')
-  if ((score.counts?.captions ?? 0) === 0) d.push('no_captions')
-  return d
+  return diagnoseScore(score)
 }
 
 function propose(diags, tried, force, cheap) {

@@ -12,6 +12,8 @@ const FIXTURE_MAP = {
     'fixture://a-roll': resolve(SAMPLE, 'synth_talkinghead_pattern.mp4'),
     'fixture://vo': resolve(SAMPLE, 'synth_talkinghead_pattern.mp4'),
     'fixture://library-broll': resolve(SAMPLE, 'nasa_greenland.mp4'),
+    'fixture://nasa-alan': resolve(SAMPLE, 'nasa-svs-2026/nasa_alan_2026.mp4'),
+    'fixture://nasa-ice': resolve(SAMPLE, 'nasa-svs-2026/nasa_chillin_seaice.mp4'),
 };
 export function resolveSrc(src) {
     if (!src)
@@ -327,11 +329,13 @@ export function blendMeasured(dummy, measured, edl) {
     let visual = Math.min(1, hookCuts * 0.12 + (measured.source_looped ? 0 : lateCuts * 0.08));
     if (firstCut > 2.2)
         visual = Math.max(0, visual - 0.15);
-    let pacing = dummy.vector.pacing;
+    let pacing = d >= 25 && d <= 45 ? 0.65 : 0.5;
+    if (firstCut <= hookBy && hookCuts >= 2)
+        pacing = Math.min(1, pacing + 0.15);
     if (cps > 1.2)
-        pacing = Math.min(pacing, 0.45);
+        pacing = 0.4;
     if (hookCuts === 0 && d > 20)
-        pacing = Math.min(pacing, 0.35);
+        pacing = 0.3;
     if (measured.late && lateCuts === 0 && hookCuts <= 1)
         pacing = Math.min(pacing, 0.4);
     const vector = {

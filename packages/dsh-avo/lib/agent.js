@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { applyMutation, evaluate, loadJson, loadKnowledge, Lineage, CHEAP } from './loop.js';
+import { diagnoseScore } from './inspect.js';
 function weakestKeys(vector, n = 2) {
     return Object.entries(vector || {})
         .filter(([k]) => !['repetition', 'overediting', 'distraction'].includes(k))
@@ -21,7 +22,14 @@ function pickOp(memory) {
         visual_novelty: ['punch_in', 'broll_swap', 'graphic'],
         narrative_clarity: ['caption', 'trim'],
     };
-    const kHints = (memory.kHints || []).filter((op) => !tried.has(op) && !committed.has(op) && op !== 'h3_regen');
+    const diags = memory.diags || [];
+    if (diags.includes('hook_needs_visual') && !tried.has('punch_in') && !committed.has('punch_in')) {
+        return { op: 'punch_in', reason: 'measured:firstCut' };
+    }
+    if (diags.includes('flat_pacing') && !tried.has('broll_swap') && !committed.has('broll_swap')) {
+        return { op: 'broll_swap', reason: 'measured:hookCuts' };
+    }
+    const kHints = (memory.kHints || []).filter((op) => !tried.has(op) && !committed.has(op) && op !== 'h3_regen' && !(op === 'music_duck' && diags.includes('quiet_audio')));
     if (kHints.length)
         return { op: kHints[0], reason: 'k_prior' };
     for (const key of weak) {
@@ -87,6 +95,7 @@ export class Agent {
     diagnose(score) {
         const weak = weakestKeys(score.vector);
         this.memory.weakKeys = weak;
+        this.memory.diags = diagnoseScore(score);
         this.memory.diagnosed = true;
         this.memory.lastScore = score;
         this.log('diagnose', { weak, scalar: score.scalar, correctness: score.correctness });
