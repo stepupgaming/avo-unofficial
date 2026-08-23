@@ -1,0 +1,5 @@
+- insert:
+    - id: avo
+      name: '@stepup/dsh-avo'
+      inject:
+        - tools

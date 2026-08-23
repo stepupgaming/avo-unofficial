@@ -4,3 +4,4 @@ __pycache__/
 lineage/*.json
 lineage/commits/
 .pytest_cache/
+*.egg-info/

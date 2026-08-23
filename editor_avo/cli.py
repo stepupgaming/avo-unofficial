@@ -1,51 +1,74 @@
-"""CLI: python -m editor_avo vary --fixture ... --steps 1"""
+"""EditorAVO: unofficial AVO operator over EDL timelines."""
+__version__ = "0.0.1"
 
-from __future__ import annotations
-
-import argparse
+import sys
 import json
 from pathlib import Path
 
-from editor_avo.evaluate import evaluate
+from editor_avo.lineage import Lineage
 from editor_avo.knowledge import load_knowledge
-from editor_avo.mutations import H3_REFUSED, apply_mutation
-from editor_avo.vary import run_vary
 
 
-def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="editor-avo")
-    sub = p.add_subparsers(dest="cmd", required=True)
-    v = sub.add_parser("vary", help="one or more Agent variation steps")
-    v.add_argument("--fixture", default="fixtures/seed_edl.json")
-    v.add_argument("--lineage", default="lineage")
-    v.add_argument("--steps", type=int, default=1)
-    v.add_argument("--inner", type=int, default=5)
-    s = sub.add_parser("score", help="score an EDL")
-    s.add_argument("edl")
-    h = sub.add_parser("h3-probe", help="show H3 stub refuse")
-    _ = h
-    args = p.parse_args(argv)
-    if args.cmd == "vary":
-        results = run_vary(args.fixture, args.lineage, steps=args.steps, inner=args.inner)
-        print(json.dumps(results, indent=2, default=str))
-        return 0
-    if args.cmd == "score":
-        from editor_avo.edl import load_edl
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: editor_avo <command> [args]")
+        print("Commands:")
+        print("  vary <fixture> [--steps N]   Run variation operator")
+        print("  lineage                       Show committed lineage")
+        print("  knowledge                     Show editing knowledge/priors")
+        sys.exit(1)
 
-        print(json.dumps(evaluate(load_edl(args.edl), load_knowledge()), indent=2))
-        return 0
-    if args.cmd == "h3-probe":
-        from editor_avo.edl import load_edl
+    command = sys.argv[1]
 
-        try:
-            apply_mutation(load_edl("fixtures/seed_edl.json"), "h3_regen")
-        except Exception as e:
-            print(H3_REFUSED if H3_REFUSED in str(e) else str(e))
-            return 0
-        print("unexpected success")
-        return 2
-    return 1
+    if command == "vary":
+        fixture = None
+        steps = 1
+        args = sys.argv[2:]
+        i = 0
+        while i < len(args):
+            if args[i] == "--fixture" and i + 1 < len(args):
+                fixture = args[i + 1]
+                i += 2
+            elif args[i] == "--steps" and i + 1 < len(args):
+                steps = int(args[i + 1])
+                i += 2
+            else:
+                i += 1
+        if not fixture:
+            print("Error: --fixture is required for vary command")
+            sys.exit(1)
+        from editor_avo.vary import run_vary
+        lineage_dir = Path("/workspace/avo-unofficial/lineage")
+        results = run_vary(fixture, lineage_dir, steps=steps)
+        print(json.dumps({"results": results}, indent=2))
+
+    elif command == "lineage":
+        lineage = Lineage("/workspace/avo-unofficial/lineage")
+        committed = lineage.committed()
+        best = lineage.best()
+        if not committed:
+            print("No committed edits yet.")
+        else:
+            print(f"Committed: {len(committed)} edits")
+            if best:
+                print(f"Best scalar: {best['scalar']}")
+            for c in committed:
+                note = c.get("note", "")
+                edl_id = c.get("edl_id", "")
+                print(f"  {c['id']}: scalar={c.get('scalar', 'N/A')} edl_id={edl_id} note={note}")
+
+    elif command == "knowledge":
+        k = load_knowledge()
+        print(f"Knowledge source: {k.get('source')}")
+        print(f"Cheap first mutations: {k.get('cheap_first')}")
+        print(f"Hook visual by s: {k.get('hook_visual_by_s')}")
+        print(f"Broll reject if gt: {k.get('broll_reject_if_gt')}")
+
+    else:
+        print(f"Unknown command: {command}")
+        print("Available commands: vary, lineage, knowledge")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()
