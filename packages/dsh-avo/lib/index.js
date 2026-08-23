@@ -1,8 +1,7 @@
-import { spawn } from 'node:child_process'
-import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import Schema from 'schemastery'
+import { evaluate, loadJson, loadKnowledge, Lineage, runVary } from './loop.js'
 
 export const name = 'avo'
 export const inject = ['tools']
@@ -16,32 +15,6 @@ export const Config = Schema.object({
   lineage: Schema.string().default(resolve(ROOT, 'lineage')),
 })
 
-function runPy(args, cwd, signal) {
-  return new Promise((res, rej) => {
-    const child = spawn('python3', ['-m', 'editor_avo', ...args], {
-      cwd,
-      env: { ...process.env, PYTHONPATH: cwd },
-    })
-    let out = ''
-    let err = ''
-    const onAbort = () => child.kill('SIGTERM')
-    signal?.addEventListener?.('abort', onAbort)
-    child.stdout.on('data', (d) => { out += d })
-    child.stderr.on('data', (d) => { err += d })
-    child.on('error', rej)
-    child.on('close', (code) => {
-      signal?.removeEventListener?.('abort', onAbort)
-      if (code === 0) res(out)
-      else rej(new Error(err || out || `exit ${code}`))
-    })
-  })
-}
-
-function parseJson(text) {
-  const t = text.trim()
-  try { return JSON.parse(t) } catch { return { raw: t } }
-}
-
 export function apply(ctx, config = {}) {
   const root = config.root || ROOT
   const genome = config.genome || GENOME
@@ -53,7 +26,7 @@ export function apply(ctx, config = {}) {
 
   ctx.effect(() => ctx.tools.register(defineTool({
     name: 'avo.vary',
-    description: 'One EditorAVO Agent(P,K,f) variation step on an EDL/timeline JSON. Cheap mutations only.',
+    description: 'One EditorAVO Agent(P,K,f) step on an EDL JSON. In-process. Cheap mutations only.',
     parameters: {
       fixture: { type: 'string', description: 'Path to EDL JSON' },
       steps: { type: 'number', description: 'Outer vary steps', default: 1 },
@@ -62,11 +35,12 @@ export function apply(ctx, config = {}) {
     output: jsonOut,
     async execute(args, exec) {
       exec?.signal?.throwIfAborted?.()
-      const fixture = args.fixture || resolve(root, 'fixtures/seed_edl.json')
-      const lin = args.lineageDir || lineage
-      const steps = String(args.steps ?? 1)
-      const out = await runPy(['vary', '--fixture', fixture, '--lineage', lin, '--steps', steps], root, exec?.signal)
-      return parseJson(out)
+      return runVary({
+        fixture: args.fixture || resolve(root, 'fixtures/seed_edl.json'),
+        lineageDir: args.lineageDir || lineage,
+        steps: args.steps ?? 1,
+        genomeDir: genome,
+      })
     },
   })), 'avo:avo.vary')
 
@@ -77,10 +51,8 @@ export function apply(ctx, config = {}) {
     output: jsonOut,
     async execute(args, exec) {
       exec?.signal?.throwIfAborted?.()
-      const lin = args.lineageDir || lineage
-      const idx = resolve(lin, 'index.json')
-      if (!existsSync(idx)) return { committed: [], trajectory: [] }
-      return JSON.parse(readFileSync(idx, 'utf8'))
+      const lin = new Lineage(args.lineageDir || lineage)
+      return lin.index
     },
   })), 'avo:avo.lineage')
 
@@ -91,8 +63,7 @@ export function apply(ctx, config = {}) {
     output: jsonOut,
     async execute(args, exec) {
       exec?.signal?.throwIfAborted?.()
-      const out = await runPy(['score', args.edl], root, exec?.signal)
-      return parseJson(out)
+      return evaluate(loadJson(args.edl), loadKnowledge(genome))
     },
   })), 'avo:avo.evaluate')
 
@@ -103,11 +74,9 @@ export function apply(ctx, config = {}) {
     output: jsonOut,
     async execute(args, exec) {
       exec?.signal?.throwIfAborted?.()
-      const g = args.genomeDir || genome
-      const out = await runPy(['knowledge', '--genome', g], root, exec?.signal)
-      return parseJson(out)
+      return loadKnowledge(args.genomeDir || genome)
     },
   })), 'avo:avo.knowledge')
 
-  ctx.logger?.info?.('avo: loaded (@stepup/dsh-avo Door 1)')
+  ctx.logger?.info?.('avo: loaded (@stepup/dsh-avo Door 1, in-process JS loop)')
 }
