@@ -7,6 +7,7 @@ const POS = [
 ]
 const PEN = ['repetition', 'overediting', 'distraction']
 import { inspectAndPropose, supervisorInspect } from "./inspect.js"
+import { blendMeasured, measureEdl } from "./score-media.js"
 const CHEAP = ['trim', 'reorder', 'punch_in', 'speed', 'caption', 'graphic', 'broll_swap', 'sfx', 'music_duck']
 const H3_REFUSED = 'h3_regen refused in v0 (expensive last; stub only)'
 
@@ -141,7 +142,8 @@ export function evaluate(edl, k) {
   if (counts.graphics > 4) distraction = clip(distraction + 0.2)
   const vector = { ...positives, repetition, overediting, distraction }
   const scalar = Object.values(positives).reduce((a, b) => a + b, 0) - (repetition + overediting + distraction)
-  return { correctness: true, correctness_reasons: [], vector, scalar: Math.round(scalar * 1e6) / 1e6, counts }
+  const out = { correctness: true, correctness_reasons: [], vector, scalar: Math.round(scalar * 1e6) / 1e6, counts }
+  return blendMeasured(out, measureEdl(edl), edl)
 }
 
 function tracks(edl) {
