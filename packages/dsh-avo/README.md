@@ -2,7 +2,7 @@
 
 Unofficial Door 1 DeepSeek Harness plugin for EditorAVO (arXiv:2603.24517). Not affiliated with NVIDIA.
 
-The variation loop is in-process JavaScript (`lib/loop.js`). Tools do not spawn Python.
+Source is TypeScript in `src/`. `lib/` is `tsc` output so the host can load without running prepare.
 
 ```sh
 dsh plugin --profile web add ./packages/dsh-avo

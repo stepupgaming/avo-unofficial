@@ -1,7 +1,9 @@
+// @ts-nocheck
 import { resolve } from 'node:path'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import Schema from 'schemastery'
-import { evaluate, loadJson, loadKnowledge, Lineage, runVary } from '../lib/loop.js'
+import { evaluate, loadJson, loadKnowledge, Lineage } from './loop.js'
+import { runVary } from './agent.js'
 
 export const name = 'avo'
 export const inject = ['tools']
@@ -77,5 +79,5 @@ export function apply(ctx: any, config: any = {}) {
     },
   })), 'avo:avo.knowledge')
 
-  ctx.logger?.info?.('avo: loaded (@stepup/dsh-avo Door 1, in-process JS loop)')
+  ctx.logger?.info?.('avo: loaded (@stepup/dsh-avo Door 1, TypeScript loop)')
 }

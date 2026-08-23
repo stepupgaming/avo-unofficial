@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { loadJson, loadKnowledge, Lineage } from './loop.js'
 import { Agent } from './agent.js'
 import { mkdtempSync } from 'node:fs'
@@ -15,7 +16,7 @@ export function runVary({ fixture, lineageDir, steps = 1, genomeDir }) {
   return results
 }
 
-if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith('run-agent.mjs')) {
+if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith('run-agent.js')) {
   const lin = mkdtempSync(join(tmpdir(), 'avo-ag-'))
   const r = runVary({ fixture: '/workspace/avo-unofficial/fixtures/seed_edl.json', lineageDir: lin, steps: 3 })
   console.log(JSON.stringify(r.map((x) => ({

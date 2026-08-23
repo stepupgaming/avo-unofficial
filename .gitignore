@@ -5,3 +5,4 @@ lineage/*.json
 lineage/commits/
 .pytest_cache/
 *.egg-info/
+node_modules/

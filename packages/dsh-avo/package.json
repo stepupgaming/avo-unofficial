@@ -4,7 +4,11 @@
   "type": "module",
   "main": "lib/index.js",
   "files": ["lib", "cordis.patch.yml"],
-  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "prepare": "tsc -p tsconfig.json"
@@ -12,5 +16,9 @@
   "peerDependencies": {
     "@deepseek-ai/dsh-tools": "*",
     "schemastery": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "typescript": "^7.0.2"
   }
 }
