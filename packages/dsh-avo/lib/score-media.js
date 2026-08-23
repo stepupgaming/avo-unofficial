@@ -74,7 +74,16 @@ function scaleChain(crop) {
 }
 function clipAt(clips, t) {
     const hit = clips.filter((c) => Number(c.t0 || 0) <= t && Number(c.t1 || 0) > t);
-    return hit[0] || clips[0] || null;
+    if (!hit.length)
+        return clips[0] || null;
+    hit.sort((a, b) => {
+        const da = Number(a.t1 || 0) - Number(a.t0 || 0);
+        const db = Number(b.t1 || 0) - Number(b.t0 || 0);
+        if (da !== db)
+            return da - db;
+        return Number(b.crop || 1) - Number(a.crop || 1);
+    });
+    return hit[0];
 }
 function segments(edl, w0, w1) {
     const clips = edl.tracks?.video || [];
@@ -97,54 +106,95 @@ function segments(edl, w0, w1) {
         const clip = clipAt(clips, (a + b) / 2);
         if (!clip)
             continue;
-        out.push({ t0: a, t1: b, clip });
+        const srcIn = Number(clip.src_in || 0);
+        const src0 = srcIn + (a - Number(clip.t0 || 0));
+        const src1 = src0 + (b - a);
+        out.push({ t0: a, t1: b, src0, src1, clip });
     }
     return out;
 }
+function escDraw(s) {
+    return String(s || '').replace(/[:\\']/g, ' ').slice(0, 48);
+}
 export function renderWindow(edl, w0, w1, outPath) {
     const clips = edl.tracks?.video || [];
-    const aroll = resolveSrc(clips[0]?.src);
-    if (!aroll)
+    const paths = [];
+    const idxOf = (src) => {
+        const p = resolveSrc(src);
+        if (!p)
+            return -1;
+        let i = paths.indexOf(p);
+        if (i < 0) {
+            paths.push(p);
+            i = paths.length - 1;
+        }
+        return i;
+    };
+    if (idxOf(clips[0]?.src) < 0)
         throw new Error('no resolvable a-roll');
     const segs = segments(edl, w0, w1);
     if (!segs.length)
         throw new Error('empty window');
+    for (const s of segs)
+        idxOf(s.clip.src);
     const brolls = (edl.tracks?.broll || []).filter((b) => Number(b.t1 || 0) > w0 && Number(b.t0 || 0) < w1 && resolveSrc(b.src));
-    const inputs = ['-y', '-hide_banner', '-stream_loop', '-1', '-i', aroll];
-    const brollPaths = [];
-    for (const b of brolls.slice(0, 2)) {
-        const path = resolveSrc(b.src);
-        brollPaths.push({ ...b, path });
-        inputs.push('-stream_loop', '-1', '-i', path);
-    }
+    for (const b of brolls.slice(0, 2))
+        idxOf(b.src);
+    const vo = (edl.tracks?.audio || [])[0];
+    if (vo)
+        idxOf(vo.src);
+    const inputs = ['-y', '-hide_banner'];
+    for (const p of paths)
+        inputs.push('-stream_loop', '-1', '-i', p);
     const filters = [];
     const labels = [];
     segs.forEach((s, i) => {
         const lab = `s${i}`;
-        filters.push(`[0:v]trim=${s.t0}:${s.t1},setpts=PTS-STARTPTS,${scaleChain(s.clip.crop)}[${lab}]`);
+        const inn = idxOf(s.clip.src);
+        filters.push(`[${inn}:v]trim=${s.src0}:${s.src1},setpts=PTS-STARTPTS,${scaleChain(s.clip.crop)}[${lab}]`);
         labels.push(`[${lab}]`);
     });
-    let last = 'base';
-    if (labels.length === 1) {
-        last = labels[0].slice(1, -1);
-    }
-    else {
+    let last = labels.length === 1 ? labels[0].slice(1, -1) : 'base';
+    if (labels.length > 1)
         filters.push(`${labels.join('')}concat=n=${labels.length}:v=1:a=0[base]`);
-    }
-    brollPaths.forEach((b, i) => {
+    brolls.slice(0, 2).forEach((b, i) => {
         const mid = `br${i}`;
         const ov = `ov${i}`;
         const t0 = Math.max(0, Number(b.t0 || 0) - w0);
         const t1 = Math.min(w1 - w0, Number(b.t1 || 0) - w0);
-        filters.push(`[${i + 1}:v]${scaleChain(1)}[${mid}]`);
+        filters.push(`[${idxOf(b.src)}:v]${scaleChain(1)}[${mid}]`);
         filters.push(`[${last}][${mid}]overlay=0:0:enable='between(t\\,${t0}\\,${t1})'[${ov}]`);
         last = ov;
     });
+    for (const g of (edl.tracks?.graphics || [])) {
+        const t0 = Math.max(0, Number(g.t0 || 0) - w0);
+        const t1 = Math.min(w1 - w0, Number(g.t1 || 0) - w0);
+        if (t1 <= 0 || t0 >= w1 - w0)
+            continue;
+        const ov = `g${last}`;
+        filters.push(`[${last}]drawbox=x=40:y=80:w=460:h=70:color=white@0.35:t=fill:enable='between(t\\,${t0}\\,${t1})'[${ov}]`);
+        last = ov;
+    }
+    for (const c of (edl.tracks?.captions || [])) {
+        const t0 = Math.max(0, Number(c.t0 || 0) - w0);
+        const t1 = Math.min(w1 - w0, Number(c.t1 || 0) - w0);
+        if (t1 <= 0 || t0 >= w1 - w0)
+            continue;
+        const ov = `c${last}`;
+        const text = escDraw(c.text);
+        filters.push(`[${last}]drawtext=text='${text}':x=24:y=h-120:fontsize=36:fontcolor=white:borderw=2:enable='between(t\\,${t0}\\,${t1})'[${ov}]`);
+        last = ov;
+    }
+    const map = ['-map', `[${last}]`];
+    const voPath = vo ? resolveSrc(vo.src) : null;
+    if (voPath) {
+        filters.push(`[${idxOf(vo.src)}:a]atrim=${w0}:${w1},asetpts=PTS-STARTPTS[aud]`);
+        map.push('-map', '[aud]');
+    }
     const args = [
         ...inputs,
         '-filter_complex', filters.join(';'),
-        '-map', `[${last}]`,
-        '-map', '0:a?',
+        ...map,
         '-t', String(Math.max(0.2, w1 - w0)),
         '-c:v', 'libx264',
         '-preset', 'ultrafast',
@@ -160,9 +210,11 @@ export function renderWindow(edl, w0, w1, outPath) {
 }
 function proxyKey(edl, tag, w0, w1) {
     const payload = {
-        tag, w0, w1,
-        v: (edl.tracks?.video || []).slice(0, 4).map((c) => [c.src, c.t0, c.t1, c.crop]),
+        tag, w0, w1, v2: 3,
+        v: (edl.tracks?.video || []).slice(0, 4).map((c) => [c.src, c.t0, c.t1, c.crop, c.src_in]),
         b: (edl.tracks?.broll || []).slice(0, 3).map((c) => [c.src, c.t0, c.t1]),
+        c: (edl.tracks?.captions || []).slice(0, 4).map((c) => [c.text, c.t0, c.t1]),
+        g: (edl.tracks?.graphics || []).slice(0, 4).map((c) => [c.kind, c.t0, c.t1]),
         d: edlDuration(edl),
     };
     return createHash('sha1').update(JSON.stringify(payload)).digest('hex').slice(0, 16);
@@ -181,13 +233,8 @@ function measureWindow(edl, w0, w1, tag) {
             renderWindow(edl, w0, w1, out);
         return { ...measurePath(out), window: [w0, w1], tag };
     }
-    catch (e) {
-        try {
-            renderWindow(edl, w0, w1, out);
-        }
-        catch (e2) {
-            throw e2;
-        }
+    catch {
+        renderWindow(edl, w0, w1, out);
         return { ...measurePath(out), window: [w0, w1], tag };
     }
 }
@@ -197,6 +244,7 @@ export function measureEdl(edl) {
         return null;
     const d = edlDuration(edl);
     try {
+        const srcMeta = ffprobe(src);
         const hookEnd = Math.min(HOOK_S, Math.max(1, d));
         const hook = measureWindow(edl, 0, hookEnd, 'hook');
         let late = null;
@@ -210,10 +258,13 @@ export function measureEdl(edl) {
         return {
             ...hook,
             edl_duration: d,
+            source_duration: srcMeta.duration,
+            source_looped: d > srcMeta.duration + 0.05,
             hook,
             late,
             nCuts: hook.nCuts + (late?.nCuts || 0),
             firstCut: hook.firstCut,
+            not_vlm: true,
         };
     }
     catch (e) {
@@ -222,7 +273,7 @@ export function measureEdl(edl) {
 }
 export function blendMeasured(dummy, measured, edl) {
     if (!measured || measured.error) {
-        return { ...dummy, measured: measured || null, f_mode: 'dummy_only' };
+        return { ...dummy, measured: measured || null, f_mode: 'dummy_only', not_vlm: true };
     }
     const reasons = [...(dummy.correctness_reasons || [])];
     const d = measured.edl_duration != null ? measured.edl_duration : measured.duration;
@@ -235,24 +286,18 @@ export function blendMeasured(dummy, measured, edl) {
     const ok = reasons.length === 0 && dummy.correctness;
     if (!ok) {
         const vector = Object.fromEntries(Object.keys(dummy.vector || {}).map((k) => [k, 0]));
-        return { correctness: false, correctness_reasons: reasons, vector, scalar: 0, measured, f_mode: 'measured_gate' };
+        return { correctness: false, correctness_reasons: reasons, vector, scalar: 0, measured, f_mode: 'measured_gate', not_vlm: true };
     }
     const hookBy = 1.0;
-    let firstVisual = measured.firstCut;
-    for (const c of edl?.tracks?.video || []) {
-        if (Number(c.crop || 1) > 1.05)
-            firstVisual = Math.min(firstVisual, Number(c.t0 || 0));
-    }
-    for (const c of edl?.tracks?.broll || [])
-        firstVisual = Math.min(firstVisual, Number(c.t0 || 0));
-    const attention = firstVisual <= hookBy ? 1 : Math.max(0, 1 - (firstVisual - hookBy) / 8);
+    const firstCut = measured.firstCut;
+    const attention = firstCut <= hookBy ? 1 : Math.max(0, 1 - (firstCut - hookBy) / 8);
     const hookCuts = measured.hook?.nCuts ?? measured.nCuts;
     const lateCuts = measured.late?.nCuts ?? 0;
     const hookDur = measured.hook?.duration || measured.duration || 1;
     const cps = hookCuts / hookDur;
-    let visual = attention * 0.45 + Math.min(0.35, hookCuts * 0.08) + Math.min(0.2, lateCuts * 0.07);
-    if (firstVisual > 2.2)
-        visual = Math.max(0, visual - 0.2);
+    let visual = Math.min(1, hookCuts * 0.12 + lateCuts * 0.08);
+    if (firstCut > 2.2)
+        visual = Math.max(0, visual - 0.15);
     let pacing = dummy.vector.pacing;
     if (cps > 1.2)
         pacing = Math.min(pacing, 0.45);
@@ -279,13 +324,16 @@ export function blendMeasured(dummy, measured, edl) {
         scalar: Math.round(scalar * 1e6) / 1e6,
         measured: {
             edl_duration: d,
+            source_duration: measured.source_duration,
+            source_looped: measured.source_looped,
             aspect: measured.aspect,
-            firstCut: measured.firstCut,
+            firstCut,
             hookCuts,
             lateCuts,
             lateWindow: measured.late?.window || null,
             path: measured.path,
         },
         f_mode: 'proxy-windows',
+        not_vlm: true,
     };
 }
