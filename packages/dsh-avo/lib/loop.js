@@ -6,6 +6,7 @@ const POS = [
   'attention_support', 'audiovisual_sync', 'youtube_prior', 'holistic_vlm_quality',
 ]
 const PEN = ['repetition', 'overediting', 'distraction']
+import { inspectAndPropose, supervisorInspect } from "./inspect.js"
 const CHEAP = ['trim', 'reorder', 'punch_in', 'speed', 'caption', 'graphic', 'broll_swap', 'sfx', 'music_duck']
 const H3_REFUSED = 'h3_regen refused in v0 (expensive last; stub only)'
 
@@ -289,9 +290,9 @@ export function varyOnce(seed, lineage, k, inner = 5) {
     const best = lineage.best()
     const bestScalar = best ? best.scalar : parentScore.scalar
     const diags = diagnostics(parentScore)
-    const redirect = supervisorRedirect(lineage.index.trajectory, cheap)
+    const redirect = supervisorInspect(lineage, cheap)
     if (redirect) { force = redirect; redirects += 1 }
-    const op = propose(diags, tried, force, cheap)
+    const pick = inspectAndPropose({ diags, tried, force, cheap, lineage, k }); const op = pick.op
     tried.push(op)
     let cand
     try { cand = applyMutation(parent, op) } catch (e) {

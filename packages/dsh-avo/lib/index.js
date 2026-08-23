@@ -1,7 +1,8 @@
 import { resolve } from 'node:path'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import Schema from 'schemastery'
-import { evaluate, loadJson, loadKnowledge, Lineage, runVary } from './loop.js'
+import { evaluate, loadJson, loadKnowledge, Lineage } from './loop.js'
+import { runVary } from './agent.js'
 
 export const name = 'avo'
 export const inject = ['tools']
