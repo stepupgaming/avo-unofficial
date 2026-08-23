@@ -175,7 +175,8 @@ export function renderWindow(edl, w0, w1, outPath) {
   const map = ['-map', `[${last}]`]
   const voPath = vo ? resolveSrc(vo.src) : null
   if (voPath) {
-    filters.push(`[${idxOf(vo.src)}:a]atrim=${w0}:${w1},asetpts=PTS-STARTPTS[aud]`)
+    const duck = vo.duck ? ',volume=0.35' : ''
+    filters.push(`[${idxOf(vo.src)}:a]atrim=${w0}:${w1}${duck},asetpts=PTS-STARTPTS[aud]`)
     map.push('-map', '[aud]')
   }
 
@@ -205,6 +206,7 @@ function proxyKey(edl, tag, w0, w1) {
     c: (edl.tracks?.captions || []).slice(0, 4).map((c) => [c.text, c.t0, c.t1]),
     g: (edl.tracks?.graphics || []).slice(0, 4).map((c) => [c.kind, c.t0, c.t1]),
     d: edlDuration(edl),
+    duck: (edl.tracks?.audio || []).map((a) => !!a.duck),
   }
   return createHash('sha1').update(JSON.stringify(payload)).digest('hex').slice(0, 16)
 }
