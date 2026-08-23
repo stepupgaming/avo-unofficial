@@ -16,7 +16,7 @@ export function runVary({ fixture, lineageDir, steps = 1, genomeDir }) {
 }
 if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith('run-agent.js')) {
     const lin = mkdtempSync(join(tmpdir(), 'avo-ag-'));
-    const r = runVary({ fixture: '/workspace/avo-unofficial/fixtures/seed_edl.json', lineageDir: lin, steps: 3 });
+    const r = runVary({ fixture: '/workspace/avo-unofficial/fixtures/seed_edl.json', lineageDir: lin, steps: 3, genomeDir: process.env.AVO_GENOME || '/workspace/editing-genome' });
     console.log(JSON.stringify(r.map((x) => ({
         status: x.status, op: x.op, why: x.why, tried: x.tried,
         tools: (x.transcript || []).map((t) => t.tool),

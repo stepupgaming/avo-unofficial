@@ -105,6 +105,18 @@ export function loadKnowledge(genomeDir) {
         k.videos = videos;
         k.beats = beats;
     }
+    const videosPath = join(genomeDir, 'videos.jsonl');
+    if (existsSync(videosPath)) {
+        const corpusVideos = readFileSync(videosPath, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+        const eventsPath = join(genomeDir, 'events.jsonl');
+        const corpusEvents = existsSync(eventsPath)
+            ? readFileSync(eventsPath, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l))
+            : [];
+        const cuts = corpusVideos.map((v) => Number(v.cut_count ?? (v.cuts && v.cuts.length) ?? 0));
+        const mean_cut_count = cuts.length ? cuts.reduce((a, b) => a + b, 0) / cuts.length : 0;
+        const ids = corpusVideos.map((v) => v.id ?? v.path ?? v.file).filter(Boolean).slice(0, 50);
+        k.operator_corpus = { videos: corpusVideos, events: corpusEvents, mean_cut_count, ids };
+    }
     return k;
 }
 export function evaluate(edl, k) {
