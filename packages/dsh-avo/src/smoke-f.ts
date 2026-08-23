@@ -17,7 +17,4 @@ const out = [a, b, c].map((s, i) => ({
   measured: s.measured,
 }))
 console.log(JSON.stringify(out, null, 2))
-if (out.some((x) => x.f_mode !== 'proxy+edl' || !x.correctness)) process.exit(2)
-if (!(out[1].scalar > out[0].scalar - 1e-9 || out[2].scalar > out[0].scalar - 1e-9)) {
-  console.error('mutations did not at least match seed; still useful if f ran')
-}
+if (out.some((x) => x.f_mode !== 'proxy-windows' || !x.correctness)) process.exit(2)

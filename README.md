@@ -8,7 +8,7 @@ Paper: `Vary(P_t) = Agent(P_t, K, f)`. The variation operator is an agent loop (
 
 ## Product
 
-`packages/dsh-avo` is a Door 1 DeepSeek Harness plugin. The loop is in-process JavaScript. There is no Python.
+`packages/dsh-avo` is a Door 1 DeepSeek Harness plugin. The loop is TypeScript in packages/dsh-avo/src. lib is compiled output. There is no Python.
 
 ```sh
 dsh plugin --profile web add ./packages/dsh-avo
@@ -20,7 +20,7 @@ Tools: `avo.vary`, `avo.lineage`, `avo.evaluate`, `avo.knowledge`.
 Smoke the loop without the host:
 
 ```sh
-node packages/dsh-avo/lib/run-agent.mjs
+node packages/dsh-avo/lib/run-agent.js
 ```
 
 Fixtures: `fixtures/seed_edl.json`. Knowledge is loaded from `/workspace/editing-genome/` when present.
